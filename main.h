@@ -17,9 +17,12 @@
 
 #include "stm32l4xx.h"
 #include "stm32l4xx_hal.h"
+
+#include <stdint.h>
+
+#include "delay.h"
 #include "ADC.h"
 #include "lpuart.h"
-#include <stdint.h>
 
 #define NUM_SAMPLES 20
 
