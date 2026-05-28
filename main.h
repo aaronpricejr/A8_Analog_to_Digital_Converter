@@ -12,29 +12,19 @@
  ******************************************************************************
  */
 
-#ifndef __MAIN_H
-#define __MAIN_H
+#ifndef INC_MAIN_H_
+#define INC_MAIN_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Includes ------------------------------------------------------------------*/
+#include "stm32l4xx.h"
 #include "stm32l4xx_hal.h"
+#include "ADC.h"
 #include "lpuart.h"
-#include "ADC.h"          // extern volatile adc_result, adc_eoc_flag
 #include <stdint.h>
 
-
-/* Function Prototypes -------------------------------------------------------*/
-void Error_Handler(void);
-void ADC1_2_IRQHandler();
-
-/*DEFINES --------------------------------------------------------------------*/
 #define NUM_SAMPLES 20
 
-#ifdef __cplusplus
-}
-#endif
+void SystemClock_Config(void);
+void Error_Handler(void);
 
-#endif /* __MAIN_H */
+#endif /* INC_MAIN_H_ */
+
