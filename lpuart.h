@@ -3,9 +3,17 @@
 
 #include <stdint.h>
 
-// FUNCTION PROTOTYPES ---------------------------------------------------------
 void LPUART_init(void);
 void LPUART_print(const char *message);
-void LPUART_print_ADC_table(uint16_t adc_min, uint16_t adc_max, uint32_t adc_avg);
+char LPUART_read_char(void);
+
+void LPUART_clear_screen(void);
+
+void LPUART_print_ADC_table(uint16_t min_counts,
+                            uint16_t max_counts,
+                            uint16_t avg_counts,
+                            int32_t min_mv,
+                            int32_t max_mv,
+                            int32_t avg_mv);
 
 #endif /* LPUART_H */
