@@ -55,3 +55,20 @@ void ADC_init(void)
     /* Start first conversion */
     ADC1->CR |= ADC_CR_ADSTART;
 }
+
+ADC_Cal_t adc_cal = {0};
+
+int32_t ADC_apply_cal(uint16_t raw)
+{
+    if (!adc_cal.valid)
+        return (int32_t)raw * VREF_MV / FULL_SCALE;
+
+    int32_t corrected = ((int32_t)raw - adc_cal.offset)
+                        * adc_cal.gain_num / adc_cal.gain_den;
+
+    if (corrected < 0)       corrected = 0;
+    if (corrected > VREF_MV) corrected = VREF_MV;
+
+    return corrected;
+}
+
