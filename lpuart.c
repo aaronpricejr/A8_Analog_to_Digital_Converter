@@ -39,13 +39,13 @@ GPIOG->AFR[1] |= (8U << ((8 - 8) * 4));
 LPUART1->CR1 &= ~USART_CR1_UE;
 // 8-bit data
 LPUART1->CR1 &= ~(USART_CR1_M1 | USART_CR1_M0);
-9
+
 // 1 stop bit
 LPUART1->CR2 &= ~USART_CR2_STOP;
 // No parity
 LPUART1->CR1 &= ~USART_CR1_PCE;
 // Baud rate: 115200 with 4 MHz clock
-LPUART1->BRR = (256 * 4000000) / 115200;
+LPUART1->BRR = 0xD056;
 // Enable transmitter and receiver
 LPUART1->CR1 |= USART_CR1_TE | USART_CR1_RE;
 // Enable LPUART
@@ -125,20 +125,12 @@ static void LPUART_print_row(const char *label, uint16_t count)
 
 void LPUART_print_ADC_table(uint16_t adc_min, uint16_t adc_max, uint32_t adc_avg)
 {
-    LPUART_print("\033[H\033[2J");
+    LPUART_print("\033[H");   // move cursor to top-left, do NOT clear screen
 
-    LPUART_print("ADC");
-    LPUART_print_char(' ');
-    LPUART_print_char(' ');
-    LPUART_print("counts");
-    LPUART_print_char(' ');
-    LPUART_print_char(' ');
-    LPUART_print("volts");
-    LPUART_print_char('\r');
-    LPUART_print_char('\n');
+    LPUART_print("ADC  counts  volts\r\n");
 
     LPUART_print_row("MIN", adc_min);
     LPUART_print_row("MAX", adc_max);
     LPUART_print_row("AVG", (uint16_t)adc_avg);
 }
-}
+
