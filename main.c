@@ -10,17 +10,16 @@
  * compiler    	: STM32CubeIDE v.1.19.0
  * target      	: NUCLEO-L4A6ZG
  * clocks      	: 4 MHz MSI to AHB2
+ *
+ * +5V -> Relay Pin 1
+ * +3.3V -> Base of BJT
+ * PA0 (ADC) -> Emitter of BJT
+ *
  ******************************************************************************
  */
 
 #ifndef INC_ADC_H_
 #define INC_ADC_H_
-
-#include "stm32l4xx_hal.h"
-
-void ADC_Init(void);
-
-
 #endif /* INC_ADC_H_ */
 
 #include "main.h"
@@ -29,21 +28,64 @@ void SystemClock_Config(void);
 
 int main(void)
 {
+    /* Configure SYSCLK >= 24 MHz here (PLL setup) */
 
-  HAL_Init();
+    LPUART_init();
+    ADC_init();
 
-  SystemClock_Config();
+    uint16_t samples[NUM_SAMPLES];
+    uint8_t  sample_idx = 0;
 
-  while (1)
-  {
-    /* USER CODE END WHILE */
+    //INITIALIZE ALL ADC variables
+    uint16_t ADC_Min = 0xFFFF;
+    uint16_t ADC_Max = 0x0000;
+    uint32_t ADC_Sum = 0;
+    uint32_t ADC_Avg = 0;
 
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+    while (1)
+    {
+        if (adc_eoc_flag)
+        {
+            samples[sample_idx] = adc_result;
+            sample_idx++;
+
+            adc_eoc_flag = 0;							// Reset interupt flag
+            ADC1->CR |= ADC_CR_ADSTART;         // start next conversion
+
+            if (sample_idx >= NUM_SAMPLES)
+            {
+                sample_idx = 0;
+
+                ADC_Min = 0xFFFF;
+                ADC_Max = 0x0000;
+                ADC_Sum = 0;
+
+                // Take ADC value across N samples, and obtain average
+                for (uint8_t i = 0; i < NUM_SAMPLES; i++)
+                {
+                    uint16_t s = samples[i];
+                    if (s < ADC_Min) ADC_Min = s;
+                    if (s > ADC_Max) ADC_Max = s;
+                    ADC_Sum += s;
+                }
+
+                ADC_Avg = ADC_Sum / NUM_SAMPLES;
+
+                // Print the updated table to the terminal
+                LPUART_print_ADC_table(ADC_Min, ADC_Max, ADC_Avg);
+            }
+        }
+    }
 }
 
-=
+void ADC1_2_IRQHandler(void) {
+	if (ADC1->ISR & ADC_ISR_EOC) {
+		ADC_Result = (uint16t)(ADC1->DR & 0x0FFF);	// Copy 12 bit ADC result
+		ADC_EOC_Flag = 1;										// new sample available for main loop
+	}
+
+}
+
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
