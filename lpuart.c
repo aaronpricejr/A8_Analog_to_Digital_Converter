@@ -134,9 +134,9 @@ static void LPUART_print_voltage_mv(int32_t mv)
         mv = 0;
     }
 
-    if (mv > 3000)
+    if (mv > 3300)
     {
-        mv = 3000;
+        mv = 3300;
     }
 
     whole = (uint32_t)mv / 1000;
