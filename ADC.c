@@ -16,11 +16,6 @@
 volatile uint16_t adc_result   = 0;
 volatile uint8_t  adc_eoc_flag = 0;
 
-void delay_us(uint32_t us)
-{
-    for (volatile uint32_t i = 0; i < (us * 4); i++) { ; }
-}
-
 void ADC_init(void)
 {
     /* Clock & power */
@@ -50,7 +45,7 @@ void ADC_init(void)
     /* EOC interrupt */
     ADC1->IER |= ADC_IER_EOCIE;
     ADC1->ISR |= ADC_ISR_EOC;
-    NVIC->ISER[0] = (1 << (ADC1_2_IRQn & 0x1F));
+    NVIC->ISER[0] |= (1 << (ADC1_2_IRQn & 0x1F));
     __enable_irq();
 
     /* GPIO PA0 analog input */
