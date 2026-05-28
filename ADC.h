@@ -20,6 +20,19 @@
 #include <stdint.h>
 #include "delay.h"
 
+typedef struct {
+    int32_t offset;
+    int32_t gain_num;
+    int32_t gain_den;
+    uint8_t valid;
+} ADC_Cal_t;
+
+extern ADC_Cal_t adc_cal;
+
+int32_t ADC_apply_cal(uint16_t raw);
+
+#define VREF_MV     3300
+#define FULL_SCALE  4095
 extern volatile uint16_t adc_result;
 extern volatile uint8_t  adc_eoc_flag;
 
