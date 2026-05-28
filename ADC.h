@@ -18,6 +18,7 @@
 
 #include "stm32l4xx.h"
 #include <stdint.h>
+#include "delay.h"
 
 extern volatile uint16_t adc_result;
 extern volatile uint8_t  adc_eoc_flag;
