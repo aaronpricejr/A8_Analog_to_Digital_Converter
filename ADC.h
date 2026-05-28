@@ -1,15 +1,7 @@
 /**
  ******************************************************************************
- * @file       	: ADC.h
- * @brief      	: Header for ADC module from A8 - ADC
- * 					  (Analog to Digital Converter)
- * project     	: EE 329 S'26 A5
- * authors     	: Aaron Price Jr. & Brandon Valenti
- * version     	: 0.1
- * date        	: 2026-05-19
- * compiler    	: STM32CubeIDE v.1.19.0
- * target      	: NUCLEO-L4A6ZG
- * clocks      	: 4 MHz MSI to AHB2
+ * @file    : ADC.h
+ * @brief   : Header for ADC module from A8 - ADC
  ******************************************************************************
  */
 
@@ -20,23 +12,26 @@
 #include <stdint.h>
 #include "delay.h"
 
-typedef struct {
-    int32_t offset;
-    int32_t gain_num;
-    int32_t gain_den;
+#define ADC_CAL_HIGH_MV 3000
+#define FULL_SCALE      4095
+#define NUM_CAL_SAMPLES 256
+
+typedef struct
+{
+    int32_t offset_counts;
+    int32_t gain_num_mv;
+    int32_t gain_den_counts;
     uint8_t valid;
 } ADC_Cal_t;
 
 extern ADC_Cal_t adc_cal;
 
-int32_t ADC_apply_cal(uint16_t raw);
-
-#define VREF_MV     3300
-#define FULL_SCALE  4095
 extern volatile uint16_t adc_result;
-extern volatile uint8_t  adc_eoc_flag;
+extern volatile uint8_t adc_eoc_flag;
 
-void delay_us(uint32_t us);
 void ADC_init(void);
+uint16_t ADC_read_blocking(void);
+uint16_t ADC_average_counts(uint16_t n);
+int32_t ADC_apply_cal(uint16_t raw);
 
 #endif /* INC_ADC_H_ */
