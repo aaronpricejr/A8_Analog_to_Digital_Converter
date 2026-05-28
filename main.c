@@ -19,9 +19,13 @@ void SystemClock_Config(void);
 
 int main(void)
 {
-	 SystemClock_Config();
-	 LPUART_print("UART OK\r\n");
+    HAL_Init();
+    SystemClock_Config();
+    SysTick_Init();
+
     LPUART_init();
+
+
     ADC_init();
 
     uint16_t samples[NUM_SAMPLES];
@@ -61,6 +65,9 @@ int main(void)
                 adc_avg = adc_sum / NUM_SAMPLES;
 
                 LPUART_print_ADC_table(adc_min, adc_max, adc_avg);
+
+			    delay_ms(500);
+
             }
         }
     }
