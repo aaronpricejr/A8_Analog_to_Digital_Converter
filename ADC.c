@@ -1,74 +1,107 @@
-/**
- ******************************************************************************
- * @file    : ADC.c
- * @brief   : ADC initialization and configuration
- * project  : EE 329 S'26 A5
- * authors  : Aaron Price Jr. & Brandon Valenti
- * version  : 0.1
- * date     : 2026-05-19
- * compiler : STM32CubeIDE v.1.19.0
- * target   : NUCLEO-L4A6ZG
- ******************************************************************************
- */
-
 #include "ADC.h"
 
-volatile uint16_t adc_result   = 0;
-volatile uint8_t  adc_eoc_flag = 0;
-
-void ADC_init(void)
-{
-    /* Clock & power */
-    RCC->AHB2ENR |= RCC_AHB2ENR_ADCEN;
-    ADC123_COMMON->CCR |= (1 << ADC_CCR_CKMODE_Pos);
-    ADC1->CR &= ~ADC_CR_DEEPPWD;
-    ADC1->CR |=  ADC_CR_ADVREGEN;
-    delay_us(20);
-
-    /* Calibration */
-    ADC1->DIFSEL &= ~ADC_DIFSEL_DIFSEL_5;
-    ADC1->CR &= ~(ADC_CR_ADEN | ADC_CR_ADCALDIF);
-    ADC1->CR |=  ADC_CR_ADCAL;
-    while (ADC1->CR & ADC_CR_ADCAL) { ; }
-
-    /* Enable ADC */
-    ADC1->ISR |= ADC_ISR_ADRDY;
-    ADC1->CR  |= ADC_CR_ADEN;
-    while (!(ADC1->ISR & ADC_ISR_ADRDY)) { ; }
-    ADC1->ISR |= ADC_ISR_ADRDY;
-
-    /* Sampling & sequencing */
-    ADC1->SQR1  |= (5 << ADC_SQR1_SQ1_Pos);
-    ADC1->SMPR1 |= (1 << ADC_SMPR1_SMP5_Pos);
-    ADC1->CFGR  &= ~(ADC_CFGR_CONT | ADC_CFGR_EXTEN | ADC_CFGR_RES);
-
-    /* EOC interrupt */
-    ADC1->IER |= ADC_IER_EOCIE;
-    ADC1->ISR |= ADC_ISR_EOC;
-    NVIC->ISER[0] |= (1 << (ADC1_2_IRQn & 0x1F));
-    __enable_irq();
-
-    /* GPIO PA0 analog input */
-    RCC->AHB2ENR  |= RCC_AHB2ENR_GPIOAEN;
-    GPIOA->MODER  |= GPIO_MODER_MODE0;
-
-    /* Start first conversion */
-    ADC1->CR |= ADC_CR_ADSTART;
-}
+volatile uint16_t adc_result = 0;
+volatile uint8_t adc_eoc_flag = 0;
 
 ADC_Cal_t adc_cal = {0};
 
-int32_t ADC_apply_cal(uint16_t raw)
+void ADC_init(void)
 {
-    if (!adc_cal.valid)
-        return (int32_t)raw * VREF_MV / FULL_SCALE;
+    /* GPIO PA0 analog input first */
+    RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
+    GPIOA->MODER |= GPIO_MODER_MODE0;
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPD0;
 
-    int32_t corrected = ((int32_t)raw - adc_cal.offset)
-                        * adc_cal.gain_num / adc_cal.gain_den;
+    /* ADC clock and power */
+    RCC->AHB2ENR |= RCC_AHB2ENR_ADCEN;
+    ADC123_COMMON->CCR |= (1U << ADC_CCR_CKMODE_Pos);
 
-    if (corrected < 0)       corrected = 0;
-    if (corrected > VREF_MV) corrected = VREF_MV;
+    ADC1->CR &= ~ADC_CR_DEEPPWD;
+    ADC1->CR |= ADC_CR_ADVREGEN;
+    delay_us(20);
 
-    return corrected;
+    /* ADC calibration */
+    ADC1->DIFSEL &= ~ADC_DIFSEL_DIFSEL_5;
+    ADC1->CR &= ~(ADC_CR_ADEN | ADC_CR_ADCALDIF);
+    ADC1->CR |= ADC_CR_ADCAL;
+    while (ADC1->CR & ADC_CR_ADCAL) { }
+
+    /* Enable ADC */
+    ADC1->ISR |= ADC_ISR_ADRDY;
+    ADC1->CR |= ADC_CR_ADEN;
+    while (!(ADC1->ISR & ADC_ISR_ADRDY)) { }
+    ADC1->ISR |= ADC_ISR_ADRDY;
+
+    /* ADC1 channel 5, 12-bit, single conversion */
+    ADC1->SQR1 &= ~ADC_SQR1_L;
+    ADC1->SQR1 &= ~ADC_SQR1_SQ1;
+    ADC1->SQR1 |= (5U << ADC_SQR1_SQ1_Pos);
+
+    ADC1->SMPR1 &= ~ADC_SMPR1_SMP5;
+    ADC1->SMPR1 |= (2U << ADC_SMPR1_SMP5_Pos);
+
+    ADC1->CFGR &= ~(ADC_CFGR_CONT | ADC_CFGR_EXTEN | ADC_CFGR_RES);
+
+    /* Enable EOC interrupt */
+    ADC1->IER |= ADC_IER_EOCIE;
+    ADC1->ISR |= ADC_ISR_EOC;
+
+    NVIC_EnableIRQ(ADC1_2_IRQn);
+    __enable_irq();
 }
 
+uint16_t ADC_read_blocking(void)
+{
+    adc_eoc_flag = 0;
+    ADC1->CR |= ADC_CR_ADSTART;
+
+    while (!adc_eoc_flag) { }
+
+    adc_eoc_flag = 0;
+    return adc_result;
+}
+
+uint16_t ADC_average_counts(uint16_t n)
+{
+    uint32_t sum = 0;
+
+    for (uint16_t i = 0; i < n; i++)
+    {
+        sum += ADC_read_blocking();
+    }
+
+    return (uint16_t)(sum / n);
+}
+
+int32_t ADC_apply_cal(uint16_t raw)
+{
+    int32_t mv;
+
+    /*
+     * Regression from calibration plot:
+     *
+     * raw_counts = 1236.1 * voltage_V + 1.7796
+     *
+     * voltage_V = (raw_counts - 1.7796) / 1236.1
+     *
+     * Integer mV form:
+     *
+     * voltage_mV = (raw_counts * 10000 - 17796) / 12361
+     *
+     * Add 6180 for rounding because 12361 / 2 = 6180.
+     */
+
+    mv = (((int32_t)raw * 10000) - 17796 + 6180) / 12361; //from calibration graph
+
+    if (mv < 0)
+    {
+        mv = 0;
+    }
+
+    if (mv > 3000)
+    {
+        mv = 3000;
+    }
+
+    return mv;
+}
