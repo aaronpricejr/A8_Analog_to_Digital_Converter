@@ -16,9 +16,13 @@
 #ifndef INC_ADC_H_
 #define INC_ADC_H_
 
-#include "stm32l4xx_hal.h"
+#include "stm32l4xx.h"
+#include <stdint.h>
 
-void ADC_Init(void);
+extern volatile uint16_t adc_result;
+extern volatile uint8_t  adc_eoc_flag;
 
+void delay_us(uint32_t us);
+void ADC_init(void);
 
 #endif /* INC_ADC_H_ */
