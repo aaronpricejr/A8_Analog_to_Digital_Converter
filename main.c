@@ -52,110 +52,79 @@ int main(void)
 
     /* ----------------------------------------------------------------
      * GPIO Init
-     *
-     * PB0:  Output, push-pull, no pull
-     *       Drives RB (1kΩ) --> Q1 base --> relay coil
-     *       HIGH = relay ON, LOW = relay OFF
-     *
-     * PC13: Input, no pull
-     *       USER pushbutton, active low
-     *       Nucleo board has external 4.7kΩ pull-up to 3.3V
      * ---------------------------------------------------------------- */
     RCC->AHB2ENR |= RCC_AHB2ENR_GPIOBEN | RCC_AHB2ENR_GPIOCEN;
 
-    /* PB0: output, push-pull, low speed, no pull, start LOW (relay OFF) */
+    /* PB0: output, push-pull, relay OFF at startup */
     GPIOB->MODER   &= ~(0x3U << (0 * 2));
     GPIOB->MODER   |=  (0x1U << (0 * 2));
     GPIOB->OTYPER  &= ~(0x1U << 0);
     GPIOB->OSPEEDR &= ~(0x3U << (0 * 2));
     GPIOB->PUPDR   &= ~(0x3U << (0 * 2));
-    GPIOB->ODR     &= ~(0x1U << 0);            /* relay OFF on startup */
+    GPIOB->ODR     &= ~(0x1U << 0);
 
-    /* PC13: input mode (00), no pull (board provides external pull-up) */
-    GPIOC->MODER   &= ~(0x3U << (13 * 2));
-    GPIOC->PUPDR   &= ~(0x3U << (13 * 2));
-
-    /* ----------------------------------------------------------------
-     * Two-Point ADC Calibration
-     *
-     * Apply known voltages to PA0 (A0) when prompted via terminal.
-     * 256 samples are averaged at each point to reduce noise.
-     *
-     * Low  point: connect PA0 to GND     (0V)
-     * High point: connect PA0 to 3.3V pin on Nucleo
-     * ---------------------------------------------------------------- */
-    int32_t code_low, code_high;
-
-    LPUART_clear_screen();
-
-    /* Low point: short PA0 to GND */
-    LPUART_print("=== ADC Two-Point Calibration ===\r\n");
-    LPUART_print("Apply 0V (GND) to PA0 (A0), press Enter...\r\n");
-    while (LPUART_read_char() != '\r');
-    code_low = (int32_t)ADC_average_counts(NUM_CAL_SAMPLES);
-
-    /* High point: connect PA0 to 3.3V pin */
-    LPUART_print("Apply 3.3V to PA0 (A0), press Enter...\r\n");
-    while (LPUART_read_char() != '\r');
-    code_high = (int32_t)ADC_average_counts(NUM_CAL_SAMPLES);
-
-    /* Store coefficients if spread is large enough to be valid */
-    if ((code_high - code_low) >= 100)
-    {
-        adc_cal.offset_counts    = code_low;
-        adc_cal.gain_num_mv      = 3300;              /* VREF = 3.3V = 3300mV */
-        adc_cal.gain_den_counts  = code_high - code_low;
-        adc_cal.valid            = 1;
-        LPUART_print("Calibration OK!\r\n");
-    }
-    else
-    {
-        /* Calibration failed - ADC will use uncalibrated fallback */
-        adc_cal.valid = 0;
-        LPUART_print("Calibration FAILED - check wiring!\r\n");
-    }
-
-    LPUART_clear_screen();
+    /* PC13: input mode, no pull */
+    GPIOC->MODER &= ~(0x3U << (13 * 2));
+    GPIOC->PUPDR &= ~(0x3U << (13 * 2));
 
     /* ----------------------------------------------------------------
      * Main Loop
      *
      * Each iteration:
-     *   1. Poll USER button (PC13) and drive relay (PB0) accordingly
-     *   2. Collect ADC samples into circular buffer
-     *   3. Every NUM_SAMPLES conversions: compute min/avg/max,
-     *      apply calibration, print table and coil current estimate
+     *   1. Poll USER button and drive relay
+     *   2. Collect ADC samples
+     *   3. Compute min/avg/max and print results
      * ---------------------------------------------------------------- */
     uint16_t samples[NUM_SAMPLES];
     uint8_t  sample_idx = 0;
-    uint32_t adc_sum    = 0;
-    uint16_t adc_min_raw, adc_max_raw, adc_avg_raw;
-    int32_t  adc_min_mv, adc_avg_mv, adc_max_mv;
 
-    /* Kick off first conversion */
+    uint32_t adc_sum = 0;
+
+    uint16_t adc_min_raw;
+    uint16_t adc_max_raw;
+    uint16_t adc_avg_raw;
+
+    int32_t adc_min_mv;
+    int32_t adc_avg_mv;
+    int32_t adc_max_mv;
+
+    /* Start first conversion */
     adc_eoc_flag = 0;
     ADC1->CR |= ADC_CR_ADSTART;
 
     while (1)
     {
-        /* -- Relay control --
-         * PC13 reads 0 when USER button is pressed (active low)
-         * PB0 high saturates Q1 and energizes relay coil           */
-        if ((GPIOC->IDR & (1U << 13)))
-            GPIOB->ODR |=  (1U << 0);   /* button pressed  -> relay ON  */
+        /* ------------------------------------------------------------
+         * Relay Control
+         * PC13 is active low:
+         *   pressed   -> 0
+         *   released  -> 1
+         * ------------------------------------------------------------ */
+        if (!(GPIOC->IDR & (1U << 13)))
+        {
+            GPIOB->ODR |= (1U << 0);     /* relay ON */
+        }
         else
-            GPIOB->ODR &= ~(1U << 0);   /* button released -> relay OFF */
+        {
+            GPIOB->ODR &= ~(1U << 0);    /* relay OFF */
+        }
 
-        /* -- ADC sample collection -- */
+        /* ------------------------------------------------------------
+         * ADC Sample Collection
+         * ------------------------------------------------------------ */
         if (adc_eoc_flag)
         {
             samples[sample_idx++] = adc_result;
+
             adc_eoc_flag = 0;
+
+            /* Start next conversion */
             ADC1->CR |= ADC_CR_ADSTART;
 
             if (sample_idx >= NUM_SAMPLES)
             {
-                sample_idx  = 0;
+                sample_idx = 0;
+
                 adc_min_raw = 0xFFFF;
                 adc_max_raw = 0x0000;
                 adc_sum     = 0;
@@ -163,45 +132,75 @@ int main(void)
                 for (uint8_t i = 0; i < NUM_SAMPLES; i++)
                 {
                     uint16_t s = samples[i];
-                    if (s < adc_min_raw) adc_min_raw = s;
-                    if (s > adc_max_raw) adc_max_raw = s;
+
+                    if (s < adc_min_raw)
+                    {
+                        adc_min_raw = s;
+                    }
+
+                    if (s > adc_max_raw)
+                    {
+                        adc_max_raw = s;
+                    }
+
                     adc_sum += s;
                 }
 
                 adc_avg_raw = (uint16_t)(adc_sum / NUM_SAMPLES);
-                adc_min_mv  = ADC_apply_cal(adc_min_raw);
-                adc_avg_mv  = ADC_apply_cal(adc_avg_raw);
-                adc_max_mv  = ADC_apply_cal(adc_max_raw);
 
-                /* Print ADC table: counts and calibrated voltage */
-                LPUART_print_ADC_table(adc_min_raw, adc_max_raw, adc_avg_raw,
-                                       adc_min_mv,  adc_max_mv,  adc_avg_mv);
+                /* Convert raw counts to millivolts */
+                adc_min_mv = ADC_counts_to_mv(adc_min_raw);
+                adc_avg_mv = ADC_counts_to_mv(adc_avg_raw);
+                adc_max_mv = ADC_counts_to_mv(adc_max_raw);
 
-                /* -- Coil current estimate (integer math only) --
-                 * V_RE  (mV) = adc_avg_mv  (voltage across 10Ω sense resistor)
-                 * I_coil(mA) = V_RE (mV) / RE (Ω) = adc_avg_mv / 10
-                 * Format: "coil current = X.XXX A\r\n"
-                 * Uses char buffer + LPUART_print() — no float, no printf    */
+                /* Print ADC table */
+                LPUART_print_ADC_table(
+                    adc_min_raw,
+                    adc_max_raw,
+                    adc_avg_raw,
+                    adc_min_mv,
+                    adc_max_mv,
+                    adc_avg_mv
+                );
+
+                /* ----------------------------------------------------
+                 * Coil Current Estimate
+                 * I = V / R
+                 * ---------------------------------------------------- */
                 int32_t coil_mA = adc_avg_mv / RE_OHMS;
-                int32_t whole   = coil_mA / 1000;   /* amps, whole part      */
-                int32_t frac    = coil_mA % 1000;   /* milliamps, frac part  */
 
-                char cur_str[32];
+                int32_t whole = coil_mA / 1000;
+                int32_t frac  = coil_mA % 1000;
+
+                char cur_str[64];
                 uint8_t ci = 0;
 
+                for (uint8_t sp = 0; sp < 29; sp++)
+                {
+                    cur_str[ci++] = ' ';
+                }
+
                 const char *label = "coil current = ";
-                while (label[ci]) { cur_str[ci] = label[ci]; ci++; }
+
+                uint8_t li = 0;
+
+                while (label[li])
+                {
+                    cur_str[ci++] = label[li++];
+                }
 
                 cur_str[ci++] = (char)('0' + whole);
                 cur_str[ci++] = '.';
                 cur_str[ci++] = (char)('0' + (frac / 100));
                 cur_str[ci++] = (char)('0' + ((frac / 10) % 10));
                 cur_str[ci++] = (char)('0' + (frac % 10));
+
                 cur_str[ci++] = ' ';
                 cur_str[ci++] = 'A';
                 cur_str[ci++] = '\r';
                 cur_str[ci++] = '\n';
-                cur_str[ci]   = '\0';
+
+                cur_str[ci] = '\0';
 
                 LPUART_print(cur_str);
 
@@ -213,14 +212,12 @@ int main(void)
 
 /* ----------------------------------------------------------------
  * ADC1 End-of-Conversion ISR
- * Fires after each single conversion triggered by ADC_CR_ADSTART
- * Stores result and sets flag for main loop to consume
  * ---------------------------------------------------------------- */
 void ADC1_2_IRQHandler(void)
 {
     if (ADC1->ISR & ADC_ISR_EOC)
     {
-        adc_result   = (uint16_t)(ADC1->DR & 0x0FFF); /* 12-bit result */
+        adc_result = (uint16_t)(ADC1->DR & 0x0FFF);
         adc_eoc_flag = 1;
     }
 }
@@ -238,21 +235,27 @@ void SystemClock_Config(void)
     RCC_OscInitStruct.OscillatorType      = RCC_OSCILLATORTYPE_MSI;
     RCC_OscInitStruct.MSIState            = RCC_MSI_ON;
     RCC_OscInitStruct.MSICalibrationValue = 0;
-    RCC_OscInitStruct.MSIClockRange       = RCC_MSIRANGE_9; /* 24 MHz */
+    RCC_OscInitStruct.MSIClockRange       = RCC_MSIRANGE_9;
     RCC_OscInitStruct.PLL.PLLState        = RCC_PLL_NONE;
+
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
     {
         Error_Handler();
     }
 
-    RCC_ClkInitStruct.ClockType      = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-                                     | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    RCC_ClkInitStruct.ClockType      =
+        RCC_CLOCKTYPE_HCLK  |
+        RCC_CLOCKTYPE_SYSCLK |
+        RCC_CLOCKTYPE_PCLK1 |
+        RCC_CLOCKTYPE_PCLK2;
+
     RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_MSI;
     RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct,
+                            FLASH_LATENCY_1) != HAL_OK)
     {
         Error_Handler();
     }
@@ -261,9 +264,14 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
     __disable_irq();
-    while (1) { }
+
+    while (1)
+    {
+    }
 }
 
 #ifdef USE_FULL_ASSERT
-void assert_failed(uint8_t *file, uint32_t line) { }
+void assert_failed(uint8_t *file, uint32_t line)
+{
+}
 #endif
