@@ -94,7 +94,7 @@ uint16_t ADC_read_blocking(void)
  */
 int32_t ADC_counts_to_mv(uint16_t raw)
 {
-    int32_t mv = (int32_t)raw * VREF_MV / ADC_FULL_SCALE;
+    int32_t mv = ((int32_t)raw * 10000 - 17796) / 12361; //calibration
 
     if (mv < 0)       mv = 0;
     if (mv > VREF_MV) mv = VREF_MV;
